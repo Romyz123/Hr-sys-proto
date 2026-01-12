@@ -1,0 +1,86 @@
+<?php
+// security_headers.php
+header("Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline';");
+header("X-Frame-Options: DENY");
+header("X-Content-Type-Options: nosniff");
+header("Referrer-Policy: strict-origin-when-cross-origin");
+
+// Rate Limiter Function
+function checkRateLimit($pdo, $ip) {
+    $stmt = $pdo->prepare("SELECT attempts, last_attempt FROM login_attempts WHERE ip_address = ?");
+    $stmt->execute([$ip]);
+    $row = $stmt->fetch();
+
+    if ($row && $row['attempts'] > 5 && (time() - strtotime($row['last_attempt'])) < 900) {
+        header('HTTP/1.1 429 Too Many Requests');
+        die("Too many attempts. Please try again in 15 minutes.");
+    }
+}
+
+      <?php
+require_once '../app/db.php';
+require_once '../app/security_headers.php';
+require_once '../includes/require_login.php';
+
+$id = filter_input(INPUT_GET, 'id', FILTER_SANITIZE_SPECIAL_CHARS);
+$pdo = getDB();
+
+$stmt = $pdo->prepare("SELECT * FROM employees WHERE employee_id = ?");
+$stmt->execute([$id]);
+$emp = $stmt->fetch();
+
+if (!$emp) die("Employee not found.");
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link href="/assets/css/bootstrap.min.css" rel="stylesheet">
+    <title>View Employee - <?php echo htmlspecialchars($emp['last_name']); ?></title>
+</head>
+<body class="bg-light">
+    <?php include '../includes/navbar.php'; ?>
+    <div class="container mt-4">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3 text-center">
+                        <img src="avatar_view.php?id=<?php echo $emp['employee_id']; ?>" 
+                             class="img-thumbnail rounded-circle mb-3" style="width:150px; height:150px; object-fit: cover;">
+                        <h4><?php echo htmlspecialchars($emp['first_name'] . ' ' . $emp['last_name']); ?></h4>
+                        <span class="badge bg-primary"><?php echo $emp['status']; ?></span>
+                    </div>
+                    <div class="col-md-9">
+                        <ul class="nav nav-tabs" id="profileTabs">
+                            <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#overview">Overview</a></li>
+                            <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#docs">Documents</a></li>
+                        </ul>
+                        <div class="tab-content p-3">
+                            <div id="overview" class="tab-pane fade show active">
+                                <p><strong>Department:</strong> <?php echo htmlspecialchars($emp['department']); ?></p>
+                                <p><strong>Job Title:</strong> <?php echo htmlspecialchars($emp['job_title']); ?></p>
+                                <p><strong>Email:</strong> <?php echo htmlspecialchars($emp['email']); ?></p>
+                            </div>
+                            <div id="docs" class="tab-pane fade">
+                                <form action="upload_document.php" method="POST" enctype="multipart/form-data" class="mb-3">
+                                    <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf']; ?>">
+                                    <input type="hidden" name="emp_id" value="<?php echo $emp['employee_id']; ?>">
+                                    <div class="input-group">
+                                        <input type="file" name="doc" class="form-control" accept=".pdf" required>
+                                        <button class="btn btn-outline-primary" type="submit">Upload PDF</button>
+                                    </div>
+                                </form>
+                                <table class="table">
+                                    <thead><tr><th>Type</th><th>Title</th><th>Action</th></tr></thead>
+                                    <tbody id="docList">
+                                        </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="/assets/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
